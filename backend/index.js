@@ -32,22 +32,32 @@ app.post('/verify-otp', async (req, res) => {
     return res.status(401).json({ error: 'Invalid OTP' });
   }
 
-  let { data: user } = await supabase.from('users').select('*').eq('phone', phone).single();
+  let { data: user, error: selectError } = await supabase.from('users').select('*').eq('phone', phone).single();
+  if (selectError) console.log('Select error:', selectError);
 
   if (!user) {
-    const { data: newUser } = await supabase
+    const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert({ phone, role: 'farmer' })
       .select()
       .single();
+    if (insertError) console.log('Insert error:', insertError);
     user = newUser;
   }
 
-  const token = jwt.sign({ userId: user.id, role: user.role }, SECRET, { expiresIn: '7d' });
+  if (!user) {
+    return res.status(500).json({ error: 'Failed to create or find user' });
+  }
 
+  const token = jwt.sign({ userId: user.id, role: user.role }, SECRET, { expiresIn: '7d' });
   delete otpStore[phone];
 
   res.json({ message: 'Login successful', token, user });
+});
+const { verifyToken, requireRole } = require('./auth');
+
+app.get('/operator-only', verifyToken, requireRole('operator'), (req, res) => {
+  res.json({ message: `Welcome, operator! Your user ID is ${req.user.userId}` });
 });
 
 app.listen(PORT, () => {
